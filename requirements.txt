@@ -1,0 +1,11 @@
+falkordb>=1.0.8
+google-genai>=1.0.0
+pydantic>=2.7.0
+python-dotenv>=1.0.1
+streamlit>=1.38.0
+pyvis>=0.3.2
+networkx>=3.3
+pandas>=2.2.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+mcp>=1.1.0,<2.0.0
