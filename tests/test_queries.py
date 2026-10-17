@@ -9,11 +9,16 @@ class TestCanonicalCypherQueries(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.manager = get_db_manager()
-        cls.tenant_id = "acme_prod"
-        # Ensure graph has baseline data
+        cls.tenant_id = "test_sandbox"
         cls.conn = cls.manager.check_connection()
         if cls.conn.get("connected"):
-            seed_tenant_graph(manager=cls.manager, tenant_id=cls.tenant_id, reset=False)
+            seed_tenant_graph(manager=cls.manager, tenant_id=cls.tenant_id, reset=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        # Clean up sandbox graph so evaluation graphs remain pristine
+        if hasattr(cls, "conn") and cls.conn.get("connected"):
+            cls.manager.run_cypher(cls.tenant_id, "MATCH (n) DETACH DELETE n", read_only=False)
 
     def test_query_1_multihop_root_cause(self):
         """Test Query 1: 5-hop incident root-cause lineage."""

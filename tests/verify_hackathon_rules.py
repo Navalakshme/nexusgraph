@@ -286,7 +286,7 @@ def run_full_verification() -> bool:
         active_manager = create_verified_mock_manager()
         mode = "VERIFIED_HARNESS_MODE"
 
-    tenant_id = "acme_prod"
+    tenant_id = "demo_sandbox"
 
     # --------------------------------------------------------------------------
     # Step 2: Seed Graph & Verify Multi-Tenant Entity Counts
