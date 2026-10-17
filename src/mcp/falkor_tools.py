@@ -168,8 +168,8 @@ def trace_incident_root_cause_multihop(
     # 1. 5-hop Root Cause Traversal Cypher
     root_cause_cypher = """
     MATCH (inc:Incident {id: $incident_id})-[:AFFECTS]->(svc:Service)
-    OPTIONAL MATCH (svc)-[:DEPENDS_ON*0..2]->(dep:Service)<-[:MODIFIES|MODIFIED]-(c:Commit)-[:IN_PR|PART_OF]->(pr:PullRequest)
-    OPTIONAL MATCH (eng:Engineer)-[:AUTHORED|AUTHORED_COMMIT]->(c)
+    OPTIONAL MATCH (svc)-[:DEPENDS_ON*0..2]->(dep:Service)<-[:MODIFIES]-(c:Commit)-[:IN_PR]->(pr:PullRequest)
+    OPTIONAL MATCH (eng:Engineer)-[:AUTHORED_COMMIT]->(c)
     OPTIONAL MATCH (team:Team)-[:OWNS]->(dep)
     OPTIONAL MATCH (c)-[v:VIOLATES]->(d:Decision)
     RETURN inc.id AS incident_id, inc.title AS incident_title, inc.severity AS severity,
@@ -354,7 +354,7 @@ def trace_company_decision_lineage(
     decision_cypher = """
     MATCH (d:Decision)-[:GOVERNS]->(s:Service {name: $service_name})
     OPTIONAL MATCH (d)-[:SUPERSEDES]->(old_d:Decision)
-    OPTIONAL MATCH (st:SlackThread)-[:REFERENCES|DISCUSSES]->(d)
+    OPTIONAL MATCH (st:SlackThread)-[:REFERENCES]->(d)
     OPTIONAL MATCH (exp:Engineer)-[r:EXPERT_IN]->(s)
     RETURN d.id AS decision_id, d.title AS decision_title, d.status AS status,
            d.date AS decision_date, d.rationale AS rationale, d.author AS author,

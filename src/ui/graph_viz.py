@@ -114,6 +114,7 @@ def render_pyvis_network(
         bgcolor="#0e1117",
         font_color="#ECEFF1",
         directed=True,
+        cdn_resources="remote",
     )
 
     highlight_edges = highlight_edges or set()

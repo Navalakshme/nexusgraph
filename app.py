@@ -164,7 +164,7 @@ st.markdown("""
 
 
 # ------------------------------------------------------------------------------
-# 2. Session State Initialization
+# 2. Database Manager & High-Performance Caching
 # ------------------------------------------------------------------------------
 if "current_tenant" not in st.session_state:
     st.session_state["current_tenant"] = os.getenv("FALKORDB_DEFAULT_TENANT", "acme_prod")
@@ -178,15 +178,80 @@ if "last_investigation_result" not in st.session_state:
 if "query_audit_log" not in st.session_state:
     st.session_state["query_audit_log"] = []
 
-# Database Manager singleton
-manager = get_db_manager()
-conn_status = manager.check_connection()
-is_connected = bool(conn_status.get("connected"))
+@st.cache_resource
+def get_cached_db_manager() -> FalkorGraphManager:
+    """Singleton database manager instance cached across user sessions."""
+    return get_db_manager()
+
+manager = get_cached_db_manager()
 current_tenant = st.session_state["current_tenant"]
+
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_system_metrics(tenant_id: str) -> Dict[str, Any]:
+    """Fetch all high-level system metrics in consolidated Cypher calls with 30s caching."""
+    mgr = get_cached_db_manager()
+    conn = mgr.check_connection()
+    if not conn.get("connected"):
+        return {
+            "connected": False,
+            "latency_ms": 0,
+            "tot_nodes": 0,
+            "tot_edges": 0,
+            "tot_mems": 0,
+            "tot_handoffs": 0,
+            "top_service": "—",
+            "error": conn.get("error"),
+        }
+
+    stats_query = """
+    MATCH (n) WITH count(n) AS tot_nodes
+    MATCH ()-[r]->() WITH tot_nodes, count(r) AS tot_edges
+    OPTIONAL MATCH (m:EpisodicMemory) WITH tot_nodes, tot_edges, count(m) AS tot_mems
+    OPTIONAL MATCH ()-[h:HANDED_OFF_TO]->() RETURN tot_nodes, tot_edges, tot_mems, count(h) AS tot_handoffs
+    """
+    stats_res = mgr.run_cypher(tenant_id=tenant_id, query=stats_query, read_only=True)
+
+    pr_res = mgr.run_cypher(
+        tenant_id=tenant_id,
+        query="CALL algo.pageRank('Service', 'DEPENDS_ON') YIELD node, score RETURN node.name AS name ORDER BY score DESC LIMIT 1",
+        read_only=True,
+    )
+
+    tot_nodes = stats_res.data[0]["tot_nodes"] if stats_res.success and stats_res.data else 0
+    tot_edges = stats_res.data[0]["tot_edges"] if stats_res.success and stats_res.data else 0
+    tot_mems = stats_res.data[0]["tot_mems"] if stats_res.success and stats_res.data else 0
+    tot_handoffs = stats_res.data[0]["tot_handoffs"] if stats_res.success and stats_res.data else 0
+    top_service = pr_res.data[0]["name"] if pr_res.success and pr_res.data else "—"
+
+    return {
+        "connected": True,
+        "latency_ms": conn.get("latency_ms", 22),
+        "tot_nodes": tot_nodes,
+        "tot_edges": tot_edges,
+        "tot_mems": tot_mems,
+        "tot_handoffs": tot_handoffs,
+        "top_service": top_service,
+        "error": None,
+    }
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_cached_pyvis_graph(tenant_id: str) -> str:
+    """Generate and cache the full PyVis interactive network visualization for 60 seconds."""
+    mgr = get_cached_db_manager()
+    return build_pyvis_from_falkor_graph(manager=mgr, tenant_id=tenant_id, max_nodes=50, height="520px")
+
+sys_metrics = fetch_system_metrics(current_tenant)
+is_connected = sys_metrics["connected"]
+tot_nodes = sys_metrics["tot_nodes"]
+tot_edges = sys_metrics["tot_edges"]
+tot_mems = sys_metrics["tot_mems"]
+tot_handoffs = sys_metrics["tot_handoffs"]
+top_service = sys_metrics["top_service"]
+latency_ms = sys_metrics["latency_ms"]
 
 
 # ------------------------------------------------------------------------------
-# 3. Top Banner & Header Controls (Zero Sidebar Needed)
+# 3. Top Banner & Safe Header Controls (Zero Sidebar Needed)
 # ------------------------------------------------------------------------------
 head_col1, head_col2 = st.columns([3, 1])
 
@@ -210,46 +275,61 @@ with head_col2:
     if is_connected:
         st.markdown(f"""
         <div class="status-badge">
-            🟢 FalkorDB Cloud Connected ({conn_status.get('latency_ms')} ms)
+            🟢 FalkorDB Cloud Connected ({latency_ms} ms)
         </div>
         <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
             Graph: <code>nexus_{current_tenant}</code> (AWS Mumbai)
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.error(f"🔴 FalkorDB Disconnected: {conn_status.get('error', '')[:50]}")
-    
+        st.error(f"🔴 FalkorDB Disconnected: {str(sys_metrics.get('error', ''))[:50]}")
+
     st.markdown("<div style='margin-top: 10px;'>", unsafe_allow_html=True)
-    if st.button("⚡ Reset / Re-seed Cloud Graph", use_container_width=True, help="Populate or reset the 25 nodes and 55 edges directly in FalkorDB Cloud"):
-        with st.spinner("Seeding FalkorDB Cloud graph..."):
-            res = seed_tenant_graph(manager=manager, tenant_id=current_tenant, reset=True)
-            if res.get("success"):
-                st.success(f"Seeded {res.get('total_nodes')} nodes & {res.get('total_edges')} edges!")
-                time.sleep(0.6)
-                st.rerun()
-            else:
-                st.error(f"Failed: {res.get('error')}")
+    
+    # Safe Reset Popover (Prevents accidental data wipes by public visitors)
+    with st.popover("⚡ Seed / Reset Graph", use_container_width=True):
+        st.markdown("### 🗄️ FalkorDB Cloud Data Manager")
+        st.caption(f"Active Tenant: `nexus_{current_tenant}` (AWS Mumbai)")
+
+        if tot_nodes < 10:
+            st.info("The cloud graph is currently uninitialized. Click below to populate the benchmark dataset.")
+            if st.button("🌱 Initialize Benchmark Graph", type="primary", use_container_width=True):
+                with st.spinner("Seeding FalkorDB Cloud graph..."):
+                    res = seed_tenant_graph(manager=manager, tenant_id=current_tenant, reset=False)
+                    st.cache_data.clear()
+                    if res.get("success"):
+                        st.success(f"Populated {res.get('total_nodes')} nodes & {res.get('total_edges')} edges!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error(f"Failed: {res.get('error')}")
+        else:
+            st.success(f"Active Graph Status: **{tot_nodes} nodes**, **{tot_edges} edges**, **{tot_mems} memories**.")
+            st.markdown("---")
+            st.markdown("**Safe Refresh / Non-Destructive Update:**")
+            if st.button("🔄 Ensure Schema & Baseline Nodes", use_container_width=True, help="Ensures all microservices and ADR nodes exist without wiping memories"):
+                with st.spinner("Synchronizing graph nodes..."):
+                    res = seed_tenant_graph(manager=manager, tenant_id=current_tenant, reset=False)
+                    st.cache_data.clear()
+                    st.success("Synchronized baseline entities!")
+                    time.sleep(0.5)
+                    st.rerun()
+
+            st.markdown("---")
+            st.markdown("⚠️ **Destructive Benchmark Reset Guard**")
+            st.caption("Guarded to prevent evaluators from accidentally erasing shared demo memories.")
+            confirm_wipe = st.checkbox("Confirm: Wipe all data & re-seed fresh benchmark", key="confirm_wipe_toggle")
+            if st.button("💥 Reset & Re-seed Cloud Graph", type="primary" if confirm_wipe else "secondary", disabled=not confirm_wipe, use_container_width=True):
+                with st.spinner("Wiping and re-seeding FalkorDB Cloud graph..."):
+                    res = seed_tenant_graph(manager=manager, tenant_id=current_tenant, reset=True)
+                    st.cache_data.clear()
+                    if res.get("success"):
+                        st.success(f"Clean benchmark seeded: {res.get('total_nodes')} nodes & {res.get('total_edges')} edges!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error(f"Failed: {res.get('error')}")
     st.markdown("</div></div>", unsafe_allow_html=True)
-
-
-# Fetch live metrics from FalkorDB strictly if connected
-if is_connected:
-    node_count_res = manager.run_cypher(tenant_id=current_tenant, query="MATCH (n) RETURN count(n) AS c", read_only=True)
-    edge_count_res = manager.run_cypher(tenant_id=current_tenant, query="MATCH ()-[r]->() RETURN count(r) AS c", read_only=True)
-    mem_count_res = manager.run_cypher(tenant_id=current_tenant, query="MATCH (m:EpisodicMemory) RETURN count(m) AS c", read_only=True)
-    handoff_count_res = manager.run_cypher(tenant_id=current_tenant, query="MATCH ()-[r:HANDED_OFF_TO]->() RETURN count(r) AS c", read_only=True)
-    pagerank_res = manager.run_cypher(
-        tenant_id=current_tenant,
-        query="CALL algo.pageRank('Service', 'DEPENDS_ON') YIELD node, score RETURN node.name AS name ORDER BY score DESC LIMIT 1",
-        read_only=True,
-    )
-    tot_nodes = node_count_res.data[0]["c"] if node_count_res.success and node_count_res.data else 0
-    tot_edges = edge_count_res.data[0]["c"] if edge_count_res.success and edge_count_res.data else 0
-    tot_mems = mem_count_res.data[0]["c"] if mem_count_res.success and mem_count_res.data else 0
-    tot_handoffs = handoff_count_res.data[0]["c"] if handoff_count_res.success and handoff_count_res.data else 0
-    top_service = pagerank_res.data[0]["name"] if pagerank_res.success and pagerank_res.data else "—"
-else:
-    tot_nodes, tot_edges, tot_mems, tot_handoffs, top_service = 0, 0, 0, 0, "—"
 
 mcol1, mcol2, mcol3, mcol4, mcol5 = st.columns(5)
 with mcol1:
@@ -285,17 +365,17 @@ with tab_dash:
     st.subheader("System Architecture & Dataset Explorer")
     st.markdown("Everything inside NexusGraph operates strictly against connected graph data in **FalkorDB Cloud**.")
     
-    c_arch1, c_arch2, c_arch3 = st.columns(3)
+    c_arch1, c_arch2, c_arch3, c_arch4 = st.columns(4)
     
     with c_arch1:
         st.markdown("""
         <div class="info-card">
-            <h4>🌐 Where is the Data Stored?</h4>
+            <h4>🌐 Where is Data Stored?</h4>
             <p>
                 <b>Database:</b> FalkorDB Cloud (AWS Mumbai • <code>ap-south-1</code>)<br/>
-                <b>Graph Database Key:</b> <code>nexus_acme_prod</code><br/>
+                <b>Graph Key:</b> <code>nexus_acme_prod</code><br/>
                 <b>Engine:</b> FalkorDB GraphBLAS sparse matrices with disk persistence.<br/>
-                <b>Isolation:</b> Every tenant is strictly isolated in its own graph namespace (<code>nexus_{tenant_id}</code>).
+                <b>Multi-Tenancy:</b> Isolated in <code>nexus_{tenant_id}</code> namespace.
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -303,13 +383,13 @@ with tab_dash:
     with c_arch2:
         st.markdown("""
         <div class="info-card">
-            <h4>📦 What Data is Used?</h4>
-            <p>A realistic enterprise engineering ecosystem linking 3 layers:</p>
+            <h4>📦 What Data is Connected?</h4>
+            <p>Full engineering graph across 3 layers:</p>
             <ul>
-                <li><b>7 Microservices:</b> <code>checkout-orchestrator</code>, <code>payment-ledger</code>, <code>auth-token-service</code>, etc.</li>
-                <li><b>ADR Decisions:</b> <code>ADR-029</code> superseding <code>ADR-014</code>.</li>
-                <li><b>Code & Commits:</b> Commit <code>a8f921c</code> by Elena Rostova.</li>
-                <li><b>Slack & Tickets:</b> Thread <code>SLACK-991</code> with warnings.</li>
+                <li><b>7 Services:</b> <code>checkout-orchestrator</code>, <code>payment-ledger</code>, etc.</li>
+                <li><b>ADRs:</b> <code>ADR-029</code> superseding <code>ADR-014</code>.</li>
+                <li><b>Commits:</b> <code>a8f921c</code> by Elena Rostova.</li>
+                <li><b>Slack:</b> <code>SLACK-991</code> warning thread.</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -317,16 +397,27 @@ with tab_dash:
     with c_arch3:
         st.markdown("""
         <div class="info-card">
-            <h4>🔄 Are the 3 Agents Connected?</h4>
+            <h4>🔄 Agent Coordination</h4>
             <p>
-                <b>YES! They operate as a collaborative pipeline.</b><br/>
-                State is passed <b>strictly through FalkorDB</b>:
+                <b>Pipeline passes state via FalkorDB:</b><br/>
             </p>
             <ul>
-                <li><b>Agent 1</b> isolates root cause ➔ writes <code>[:HANDED_OFF_TO]</code> edge.</li>
-                <li><b>Agent 2</b> reads handoff, queries ADR lineage ➔ writes <code>[:HANDED_OFF_TO]</code>.</li>
-                <li><b>Agent 3</b> reads handoff, mitigates incident, and writes <code>(:EpisodicMemory)</code>.</li>
+                <li><b>Agent 1:</b> Root cause ➔ writes <code>[:HANDED_OFF_TO]</code> edge.</li>
+                <li><b>Agent 2:</b> Reads handoff, audits ADRs ➔ writes <code>[:HANDED_OFF_TO]</code>.</li>
+                <li><b>Agent 3:</b> Reads handoff, mitigates incident, writes <code>(:EpisodicMemory)</code>.</li>
             </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c_arch4:
+        st.markdown("""
+        <div class="info-card">
+            <h4>🔒 Data Provenance & Ethics</h4>
+            <p>
+                <b>100% Synthetic Benchmark:</b><br/>
+                All companies (<i>Acme Corp</i>), microservices, commit SHAs, ADRs, Slack messages, and personas (<i>Elena, Marcus, Priya</i>) are synthetic benchmark fixtures created for FalkorDB Graph Hacks.<br/>
+                <b>Zero PII or proprietary data.</b>
+            </p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -335,7 +426,7 @@ with tab_dash:
     st.caption(f"Interactive PyVis graph rendering all active nodes and edges in `nexus_{current_tenant}`. Drag nodes or zoom to explore.")
     
     if is_connected:
-        full_graph_html = build_pyvis_from_falkor_graph(manager=manager, tenant_id=current_tenant, max_nodes=50, height="520px")
+        full_graph_html = get_cached_pyvis_graph(tenant_id=current_tenant)
         st.components.v1.html(full_graph_html, height=540, scrolling=True)
     else:
         st.warning("Connect to FalkorDB Cloud to explore live graph nodes.")
@@ -388,6 +479,7 @@ with tab_pipe:
                 incident_id="INC-2026-1015",
                 auto_mitigate=auto_mitigate,
             )
+            st.cache_data.clear()
             st.session_state["last_investigation_result"] = result
             status.update(label="✅ Autonomous Multi-Agent Investigation Complete!", state="complete", expanded=False)
 
