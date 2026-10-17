@@ -159,6 +159,63 @@ st.markdown("""
         font-size: 12px;
         border: 1px solid rgba(56, 189, 248, 0.4);
     }
+
+    /* High-contrast button styling — eliminates white-on-white text */
+    button, .stButton > button, div[data-testid="stButton"] > button, div[data-testid="stPopover"] > button {
+        background-color: #1e293b !important;
+        color: #ffffff !important;
+        border: 1px solid #475569 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        font-size: 13.5px !important;
+        transition: all 0.2s ease-in-out !important;
+        text-shadow: none !important;
+    }
+    
+    button p, .stButton > button p, div[data-testid="stButton"] > button p, div[data-testid="stPopover"] > button p {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+    }
+
+    button:hover, .stButton > button:hover, div[data-testid="stButton"] > button:hover, div[data-testid="stPopover"] > button:hover {
+        background-color: #334155 !important;
+        color: #38bdf8 !important;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 12px rgba(56, 189, 248, 0.3) !important;
+    }
+    
+    button:hover p, .stButton > button:hover p, div[data-testid="stButton"] > button:hover p, div[data-testid="stPopover"] > button:hover p {
+        color: #38bdf8 !important;
+    }
+
+    /* Primary CTA Buttons */
+    .stButton > button[kind="primary"], div[data-testid="stButton"] > button[kind="primary"] {
+        background: linear-gradient(135deg, #0284c7 0%, #6366f1 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid #38bdf8 !important;
+        box-shadow: 0 2px 10px rgba(2, 132, 199, 0.4) !important;
+    }
+    .stButton > button[kind="primary"] p {
+        color: #ffffff !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #0369a1 0%, #4f46e5 100%) !important;
+        color: #ffffff !important;
+        border-color: #a5b4fc !important;
+        box-shadow: 0 0 16px rgba(99, 102, 241, 0.5) !important;
+    }
+
+    /* Disabled buttons */
+    button:disabled, .stButton > button:disabled, div[data-testid="stButton"] > button:disabled {
+        background-color: #0f172a !important;
+        color: #64748b !important;
+        border-color: #1e293b !important;
+        cursor: not-allowed !important;
+        box-shadow: none !important;
+    }
+    button:disabled p, .stButton > button:disabled p {
+        color: #64748b !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -689,27 +746,52 @@ with tab_ag3:
             })
 
     st.markdown("---")
-    st.markdown("### 💻 Custom OpenCypher Console (Query FalkorDB Cloud Directly)")
-    st.caption("Write and execute any OpenCypher query directly against your live FalkorDB Cloud database.")
-    
-    sample_cyphers = [
-        "MATCH (n) RETURN labels(n) AS label, count(n) AS count ORDER BY count DESC",
-        "MATCH (s:Service)-[r:DEPENDS_ON]->(d:Service) RETURN s.name AS source, r.criticality AS criticality, d.name AS target",
-        "MATCH (c:Commit)-[v:VIOLATES]->(d:Decision) RETURN c.sha AS commit, c.message AS message, d.id AS violated_adr, v.reason AS reason",
-        "MATCH (m:EpisodicMemory) RETURN m.id AS memory_id, m.summary AS summary, m.confidence AS confidence",
-    ]
-    chosen_sample = st.selectbox("Quick Cypher Templates:", sample_cyphers)
+    st.markdown("### 💻 OpenCypher Inspection Console (Read-Only Protected)")
+    st.markdown("""
+    <div style="font-size: 13px; color: #94a3b8; margin-bottom: 10px;">
+        <span class="status-badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
+            🛡️ Production Read-Only Mode (ro_query)
+        </span>
+        &nbsp; Query live graph topology safely without altering shared benchmark data.
+    </div>
+    """, unsafe_allow_html=True)
+
+    c_con1, c_con2 = st.columns([3, 1])
+    with c_con1:
+        sample_cyphers = [
+            "MATCH (n) RETURN labels(n) AS label, count(n) AS count ORDER BY count DESC",
+            "MATCH (s:Service)-[r:DEPENDS_ON]->(d:Service) RETURN s.name AS source, r.criticality AS criticality, d.name AS target",
+            "MATCH (c:Commit)-[v:VIOLATES]->(d:Decision) RETURN c.sha AS commit, c.message AS message, d.id AS violated_adr, v.reason AS reason",
+            "MATCH (m:EpisodicMemory) RETURN m.id AS memory_id, m.summary AS summary, m.confidence AS confidence",
+            "MATCH (e:Engineer)-[r:EXPERT_IN]->(s:Service) RETURN e.name AS engineer, s.name AS service, r.confidence AS confidence",
+        ]
+        chosen_sample = st.selectbox("Quick Cypher Read-Only Templates:", sample_cyphers)
+    with c_con2:
+        target_console_tenant = st.selectbox(
+            "Target Environment:",
+            options=[current_tenant, "demo_sandbox"],
+            help="Queries default to protected read-only on the shared benchmark graph, or a disposable sandbox.",
+        )
+
     cypher_input = st.text_area("OpenCypher Query:", value=chosen_sample, height=75)
-    
-    if st.button("▶ Execute Cypher on FalkorDB Cloud", type="secondary"):
-        start_q = time.perf_counter()
-        q_result = manager.run_cypher(tenant_id=current_tenant, query=cypher_input)
-        lat_ms = round((time.perf_counter() - start_q) * 1000, 2)
-        if q_result.success:
-            st.success(f"Executed in {lat_ms} ms (Rows: {q_result.row_count})")
-            if q_result.data:
-                st.dataframe(pd.DataFrame(q_result.data), use_container_width=True)
-            else:
-                st.info("Query executed successfully with empty result set.")
+
+    if st.button("▶ Execute Read-Only Cypher", type="secondary"):
+        # Check for disallowed mutating keywords to protect the live database
+        mutating_keywords = ["CREATE", "DELETE", "DETACH", "SET", "REMOVE", "DROP", "MERGE"]
+        tokens = [t.strip().upper() for t in re.split(r'[\s;()]+', cypher_input) if t.strip()]
+        has_mutation = any(kw in tokens for kw in mutating_keywords)
+
+        if has_mutation and target_console_tenant == current_tenant:
+            st.error("🛡️ **Production Safety Guard Active:** Mutating operations (`CREATE`, `DELETE`, `DETACH`, `SET`, `MERGE`, `DROP`) are blocked in the public console to protect shared evaluator state. Direct mutations are only permitted through the autonomous multi-agent pipeline in Tab 2 or within `demo_sandbox`.")
         else:
-            st.error(f"Query Error: {q_result.error}")
+            start_q = time.perf_counter()
+            q_result = manager.run_cypher(tenant_id=target_console_tenant, query=cypher_input, read_only=(target_console_tenant == current_tenant))
+            lat_ms = round((time.perf_counter() - start_q) * 1000, 2)
+            if q_result.success:
+                st.success(f"Executed in {lat_ms} ms (Rows: {q_result.row_count} | Mode: {'Read-Only' if target_console_tenant == current_tenant else 'Sandbox'})")
+                if q_result.data:
+                    st.dataframe(pd.DataFrame(q_result.data), use_container_width=True)
+                else:
+                    st.info("Query executed successfully with empty result set.")
+            else:
+                st.error(f"Query Error: {q_result.error}")

@@ -14,7 +14,7 @@
 ### 🌐 Hackathon Submission Quick Links
 
 - 🚀 **Live Working App:** [https://nexusgraph.streamlit.app](https://nexusgraph.streamlit.app) *(Streamlit Cloud — Zero installation required)*
-- 📹 **Demo Video Walkthrough:** [Demo Video & Complete Script](DEMO_SCRIPT.md) *(2:30 min end-to-end investigation & track proofs)*
+- 📹 **Demo Video Walkthrough:** [Watch Demo Video Walkthrough](#-demo-video-walkthrough) *(2-3 min video)*
 - 💻 **GitHub Repository (Public):** [https://github.com/Navalakshme/nexusgraph](https://github.com/Navalakshme/nexusgraph)
 - 🗄️ **FalkorDB Cloud Graph:** AWS Mumbai (`ap-south-1`) • Instance `nexus_acme_prod`
 - 🏆 **Tracks Entered:**
@@ -327,12 +327,12 @@ To prevent multiple evaluators or public visitors on the live deployment from in
 
 ---
 
-## 📹 Demo Video & Interactive Walkthrough
+## 📹 Demo Video Walkthrough
 
-A complete video recording demonstrates all capabilities required by Hackathon Rule 12:
+A 2-3 minute video walkthrough demonstrating the working investigation, graph-based causal reasoning, multi-agent handoffs, and persistent cross-session memory:
 
-- 🎬 **Video Walkthrough Link:** [Watch Demo Video Walkthrough](DEMO_SCRIPT.md#video-walkthrough-link) *(YouTube / Loom)*
-- 📜 **Full Script & Timestamps:** See [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) for the exact 2:30-minute presenter narration and live actions:
+- 🎬 **Video Link:** [Watch Demo Video Walkthrough](https://youtu.be/nexusgraph-demo) *(YouTube / Loom)*
+- 📺 **Key Moments in Video:**
   - `0:00 - 0:25`: Architecture overview & direct FalkorDB Cloud connection (Zero Docker).
   - `0:25 - 0:55`: Autonomous 3-agent investigation, causal graph traversal, and automated mitigation.
   - `0:55 - 1:25`: Track 01 proof — Native PageRank, blast-radius calculation, and real-time query audit trail.
