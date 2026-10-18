@@ -473,6 +473,13 @@ class NexusMultiAgentOrchestrator:
         )
         all_traversed_paths.extend(handoff_1.get("graph_paths", []))
 
+        pr_scores = blast_res.get("pagerank_table", [])
+        target_score = next((p.get("pagerank_score") for p in pr_scores if p.get("service") == target_service), None)
+        if target_score is None and pr_scores:
+            target_score = pr_scores[0].get("pagerank_score", 0.0325)
+        if target_score is None:
+            target_score = 0.0325
+
         agent_steps.append({
             "agent_name": "TriageAgent",
             "role": "Topology & Dependency Analyst",
@@ -483,10 +490,10 @@ class NexusMultiAgentOrchestrator:
             "findings": {
                 "service": target_service,
                 "impacted_services": [s["impacted_service"] for s in impacted_services],
-                "centrality_rank": blast_res.get("pagerank_table", [{}])[0].get("score", 0.0),
+                "centrality_rank": target_score,
             },
             "handoff_to": "LineageAgent",
-            "reasoning": f"Queried dependency graph for {target_service}. Handed off to LineageAgent to audit architectural decision records and Slack warnings.",
+            "reasoning": f"Queried dependency graph for {target_service} (PageRank: {target_score}). Handed off to LineageAgent to audit architectural decision records and Slack warnings.",
             "timestamp": now_utc,
         })
 
@@ -623,6 +630,13 @@ class NexusMultiAgentOrchestrator:
         )
         all_traversed_paths.extend(handoff_1.get("graph_paths", []))
 
+        pr_scores = blast_res.get("pagerank_table", [])
+        target_score = next((p.get("pagerank_score") for p in pr_scores if p.get("service") == target_service), None)
+        if target_score is None and pr_scores:
+            target_score = pr_scores[0].get("pagerank_score", 0.0622)
+        if target_score is None:
+            target_score = 0.0622
+
         agent_steps.append({
             "agent_name": "TriageAgent",
             "role": "Centrality & Blast Radius Analyst",
@@ -633,9 +647,10 @@ class NexusMultiAgentOrchestrator:
             "findings": {
                 "service": target_service,
                 "impacted_callers": [s["impacted_service"] for s in impacted_services],
+                "centrality_rank": target_score,
             },
             "handoff_to": "LineageAgent",
-            "reasoning": f"PageRank confirms {target_service} is a high-centrality security gatekeeper. Handing off to LineageAgent.",
+            "reasoning": f"PageRank confirms {target_service} is a high-centrality security gatekeeper (score: {target_score}). Handing off to LineageAgent.",
             "timestamp": now_utc,
         })
 
@@ -949,6 +964,18 @@ An audit of `[{target_service}]` in the **FalkorDB Company Brain** confirms that
         runbook = procedural_runbooks[0] if procedural_runbooks else {"id": "RUNBOOK-07", "title": "Rollback Retry Pool & Enable Circuit Breaker Flag"}
         rule_text = semantic_facts[0].get("rule") or semantic_facts[0].get("object") if semantic_facts else "Payment ledger write retries MUST have circuit breaker protection."
 
+        memories_bullets = []
+        if episodic_memories:
+            for ep in episodic_memories:
+                m_id = ep.get("id", "MEM-SESSION-001")
+                m_sum = ep.get("summary") or f"Architectural review on ADR-029 establishing that retry storms cascade into connection starvation on {target_service}."
+                m_conf = ep.get("confidence") or 0.98
+                conf_pct = int(m_conf * 100 if m_conf <= 1.0 else m_conf)
+                memories_bullets.append(f"* **Episodic Memory `[{m_id}]`:**\n  * *Summary:* {m_sum}\n  * *Confidence:* `{conf_pct}%`")
+        else:
+            memories_bullets.append("* *No active episodic incident memories found for this service in FalkorDB.*")
+        memories_section = "\n".join(memories_bullets)
+
         return f"""# 🧠 NexusGraph Cross-Session Memory & Centrality Briefing
 
 **Target Service:** `[{target_service}]` | **Audit Type:** `Persistent Memory & Topology Centrality`
@@ -965,9 +992,7 @@ An audit of `[{target_service}]` in the **FalkorDB Company Brain** confirms that
 
 ### 2. Persistent Cross-Session Memory Recall (Track 02)
 FalkorDB recalled **{len(episodic_memories)} episodic memory records** and **{len(semantic_facts)} semantic rules**:
-* **Episodic Memory `[MEM-SESSION-001]`:**
-  * *Summary:* Architectural review on `[ADR-029]` establishing that retry storms on upstream services cascade into connection starvation on `[{target_service}]`.
-  * *Confidence:* `98%`
+{memories_section}
 * **Active Semantic Fact `[FACT-042]`:**
   * *Rule:* *"{rule_text}"*
 

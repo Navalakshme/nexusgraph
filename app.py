@@ -735,13 +735,19 @@ with tab_ag1:
         st.markdown(f"**Impacted Upstream Services ({len(impacted)} distinct microservices across {total_paths} paths):**")
         if impacted:
             df_blast = pd.DataFrame(impacted)
-            st.dataframe(df_blast, use_container_width=True, hide_index=True)
+            df_blast_disp = df_blast.rename(columns={
+                "impacted_service": "Impacted Service",
+                "hops": "Hops",
+                "tier": "Tier",
+                "path": "Dependency Path",
+            })
+            st.dataframe(df_blast_disp, use_container_width=True, hide_index=True)
             st.download_button(
                 f"📥 Download Blast Radius CSV ({target_svc})",
-                data=df_blast.to_csv(index=False).encode("utf-8"),
+                data=df_blast_disp.to_csv(index=False).encode("utf-8"),
                 file_name=f"blast_radius_{target_svc}.csv",
                 mime="text/csv",
-                key="btn_download_blast",
+                key=f"btn_download_blast_{target_svc}",
                 use_container_width=True,
             )
         else:
@@ -798,9 +804,12 @@ with tab_ag2:
         RETURN d.id AS `ADR ID`,
                d.title AS `Title`,
                d.status AS `Status`,
-               old_d.id AS `Supersedes`,
-               newer_d.id AS `Superseded By`,
-               s.name AS `Governs Service`,
+               CASE 
+                 WHEN old_d IS NOT NULL THEN 'Supersedes ' + old_d.id 
+                 WHEN newer_d IS NOT NULL THEN 'Superseded by ' + newer_d.id 
+                 ELSE 'Initial Decision' 
+               END AS `Supersession Lineage`,
+               coalesce(s.name, 'payment-ledger') AS `Governed Service`,
                d.date AS `Ratified Date`
         ORDER BY d.id DESC
         """

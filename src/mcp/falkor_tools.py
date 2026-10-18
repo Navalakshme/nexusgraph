@@ -507,7 +507,7 @@ def recall_agent_memories(
 
     memory_cypher = """
     MATCH (s:Service {name: $service_name})
-    OPTIONAL MATCH (ep:EpisodicMemory)-[:ABOUT_SERVICE|LINKED_TO|RESOLVED_INCIDENT|RECALLS_DECISION*1..2]-(s)
+    OPTIONAL MATCH (ep:EpisodicMemory)-[:ABOUT_SERVICE|TARGET_SERVICE|PROTECTS_SERVICE|LINKED_TO|RESOLVED_INCIDENT|RECALLS_DECISION*1..2]-(s)
     OPTIONAL MATCH (rb:ProceduralRunbook)-[:APPLIES_TO|RESOLVES*1..2]-(s)
     OPTIONAL MATCH (sf:SemanticFact)-[:ABOUT_SERVICE|TARGET_SERVICE|ABOUT*1..2]-(s)
     RETURN collect(DISTINCT {

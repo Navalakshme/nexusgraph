@@ -478,6 +478,7 @@ def seed_tenant_graph(
 
     WITH mem, fact
     MATCH (adr029:Decision {id: "ADR-029"})
+    MATCH (adr014:Decision {id: "ADR-014"})
     MATCH (priya:Engineer {name: "Priya Nair"})
     MATCH (marcus:Engineer {name: "Marcus Vance"})
     MATCH (ledger:Service {name: "payment-ledger"})
@@ -486,8 +487,10 @@ def seed_tenant_graph(
     MERGE (mem)-[:INVOLVED]->(priya)
     MERGE (mem)-[:INVOLVED]->(marcus)
     MERGE (mem)-[:ABOUT_SERVICE]->(ledger)
+    MERGE (mem)-[:TARGET_SERVICE]->(auth)
     MERGE (fact)-[:ABOUT_SERVICE]->(ledger)
     MERGE (fact)-[:TARGET_SERVICE]->(auth)
+    MERGE (adr014)-[:GOVERNS]->(ledger)
     """
     manager.run_cypher(tenant_id=clean_tenant, query=memories_query)
 
