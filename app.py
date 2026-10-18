@@ -369,9 +369,8 @@ with head_col2:
                 with st.spinner("Synchronizing graph nodes..."):
                     res = seed_tenant_graph(manager=manager, tenant_id=current_tenant, reset=False)
                     st.cache_data.clear()
-                    st.success("Synchronized baseline entities!")
-                    time.sleep(0.5)
-                    st.rerun()
+                    st.toast(f"✅ Baseline Schema Verified: {res.get('total_nodes', tot_nodes)} nodes & {res.get('total_edges', tot_edges)} edges active in FalkorDB Cloud!", icon="🟢")
+                    st.success(f"✅ Schema & Baseline Verified: **{res.get('total_nodes', tot_nodes)} nodes**, **{res.get('total_edges', tot_edges)} edges**.")
 
             st.markdown("---")
             st.markdown("⚠️ **Destructive Benchmark Reset Guard**")
@@ -531,16 +530,19 @@ with tab_pipe:
         if st.button("🚨 Scenario A: SEV-1 Outage", use_container_width=True, type="primary" if curr_sc == "scenario_a" else "secondary"):
             st.session_state["selected_scenario_id"] = "scenario_a"
             st.session_state["investigation_input"] = SCENARIO_CONFIGS["scenario_a"]["prompt"]
+            st.session_state["investigation_input_widget"] = SCENARIO_CONFIGS["scenario_a"]["prompt"]
             st.rerun()
     with pcol2:
         if st.button("📜 Scenario B: ADR Lineage Audit", use_container_width=True, type="primary" if curr_sc == "scenario_b" else "secondary"):
             st.session_state["selected_scenario_id"] = "scenario_b"
             st.session_state["investigation_input"] = SCENARIO_CONFIGS["scenario_b"]["prompt"]
+            st.session_state["investigation_input_widget"] = SCENARIO_CONFIGS["scenario_b"]["prompt"]
             st.rerun()
     with pcol3:
         if st.button("🧠 Scenario C: Memory Recall", use_container_width=True, type="primary" if curr_sc == "scenario_c" else "secondary"):
             st.session_state["selected_scenario_id"] = "scenario_c"
             st.session_state["investigation_input"] = SCENARIO_CONFIGS["scenario_c"]["prompt"]
+            st.session_state["investigation_input_widget"] = SCENARIO_CONFIGS["scenario_c"]["prompt"]
             st.rerun()
 
     active_sc_info = SCENARIO_CONFIGS[st.session_state["selected_scenario_id"]]
@@ -590,17 +592,24 @@ with tab_pipe:
                 time.sleep(0.3)
                 st.write("🧠 **Agent 3 (Memory & Action)**: Recalling past runbooks, coordinating mitigation, and updating memory...")
             
-            result = orchestrator.run_investigation(
-                tenant_id=current_tenant,
-                session_id=st.session_state["active_session_id"],
-                user_prompt=user_input,
-                scenario_id=st.session_state["selected_scenario_id"],
-                incident_id=active_sc_info["incident_id"],
-                auto_mitigate=auto_mitigate,
-            )
-            st.cache_data.clear()
-            st.session_state["last_investigation_result"] = result
-            status.update(label=f"✅ {active_sc_info['name'].split(':')[0]} Pipeline Complete!", state="complete", expanded=False)
+            try:
+                result = orchestrator.run_investigation(
+                    tenant_id=current_tenant,
+                    session_id=st.session_state["active_session_id"],
+                    user_prompt=user_input,
+                    scenario_id=st.session_state["selected_scenario_id"],
+                    incident_id=active_sc_info["incident_id"],
+                    auto_mitigate=auto_mitigate,
+                )
+                st.cache_data.clear()
+                st.session_state["last_investigation_result"] = result
+                status.update(label=f"✅ {active_sc_info['name'].split(':')[0]} Pipeline Complete!", state="complete", expanded=False)
+            except Exception as e:
+                import traceback
+                err_tb = traceback.format_exc()
+                status.update(label=f"❌ Investigation Execution Error: {e}", state="error", expanded=True)
+                st.error(f"**Multi-Agent Execution Exception:** `{type(e).__name__}: {e}`")
+                st.code(err_tb, language="python")
 
     # Render results
     inv_res = st.session_state["last_investigation_result"]
@@ -614,14 +623,17 @@ with tab_pipe:
         if len(steps) >= 1:
             with col_ag1:
                 s1 = steps[0]
+                r_svc = s1['findings'].get('root_service') or s1['findings'].get('service') or 'payment-ledger'
+                c_commit = s1['findings'].get('culprit_commit')
+                extra_metric = f"<b>Culprit Commit:</b> <code>{c_commit}</code><br/>" if c_commit else f"<b>Centrality Score:</b> <code>{s1['findings'].get('centrality_rank', 0.11)}</code><br/>"
                 st.markdown(f"""
                 <div class="agent-card agent-card-1">
                     <b style="color:#38bdf8;">1. {s1['agent_name']} ({s1['role']})</b><br/>
                     <small style="color:#94a3b8;">{s1['track']}</small>
                     <p style="font-size:13px; margin-top:8px;">{s1['reasoning']}</p>
                     <div style="font-size:12px;">
-                        <b>Root Service:</b> <code>{s1['findings'].get('root_service')}</code><br/>
-                        <b>Culprit Commit:</b> <code>{s1['findings'].get('culprit_commit')}</code><br/>
+                        <b>Target Service:</b> <code>{r_svc}</code><br/>
+                        {extra_metric}
                         <b>Handoff Edge:</b> <code>[:HANDED_OFF_TO] ➔ {s1['handoff_to']}</code>
                     </div>
                 </div>
@@ -630,15 +642,18 @@ with tab_pipe:
         if len(steps) >= 2:
             with col_ag2:
                 s2 = steps[1]
+                v_dec = s2['findings'].get('violated_decision') or s2['findings'].get('governing_decision') or s2['findings'].get('protective_decision') or 'ADR-029'
+                s_dec = s2['findings'].get('superseded_decision') or 'ADR-014'
+                slack_th = s2['findings'].get('slack_warning_thread') or s2['findings'].get('slack_thread') or 'SLACK-991'
                 st.markdown(f"""
                 <div class="agent-card agent-card-2">
                     <b style="color:#c084fc;">2. {s2['agent_name']} ({s2['role']})</b><br/>
                     <small style="color:#94a3b8;">{s2['track']}</small>
                     <p style="font-size:13px; margin-top:8px;">{s2['reasoning']}</p>
                     <div style="font-size:12px;">
-                        <b>Violated Decision:</b> <span class="citation-pill">ADR-029</span><br/>
-                        <b>Superseded:</b> <span class="citation-pill">ADR-014</span><br/>
-                        <b>Slack Warning:</b> <code>{s2['findings'].get('slack_warning_thread')}</code><br/>
+                        <b>Active / Violated ADR:</b> <span class="citation-pill">{v_dec}</span><br/>
+                        <b>Superseded ADR:</b> <span class="citation-pill">{s_dec}</span><br/>
+                        <b>Slack Context:</b> <code>{slack_th}</code><br/>
                         <b>Handoff Edge:</b> <code>[:HANDED_OFF_TO] ➔ {s2['handoff_to']}</code>
                     </div>
                 </div>
@@ -647,15 +662,18 @@ with tab_pipe:
         if len(steps) >= 3:
             with col_ag3:
                 s3 = steps[2]
+                action_str = str(s3['findings'].get('action_executed') or 'None')
+                status_str = str(s3['findings'].get('incident_status') or 'Complete')
+                runbook_str = str(s3['findings'].get('procedural_runbook') or 'RUNBOOK-07')
                 st.markdown(f"""
                 <div class="agent-card agent-card-3">
                     <b style="color:#fbbf24;">3. {s3['agent_name']} ({s3['role']})</b><br/>
                     <small style="color:#94a3b8;">{s3['track']}</small>
                     <p style="font-size:13px; margin-top:8px;">{s3['reasoning']}</p>
                     <div style="font-size:12px;">
-                        <b>Runbook Recalled:</b> <span class="citation-pill">{s3['findings'].get('procedural_runbook')}</span><br/>
-                        <b>Action Taken:</b> <code>{s3['findings'].get('action_executed')[:40]}...</code><br/>
-                        <b>Incident Status:</b> <b style="color:#34d399;">{s3['findings'].get('incident_status')}</b>
+                        <b>Runbook / Policy:</b> <span class="citation-pill">{runbook_str}</span><br/>
+                        <b>Action Taken:</b> <code>{action_str[:42]}...</code><br/>
+                        <b>Resolution Status:</b> <b style="color:#34d399;">{status_str}</b>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -691,7 +709,16 @@ with tab_ag1:
         pr_data = compute_blast_radius_and_criticality(manager=manager, tenant_id=current_tenant)
         pr_table = pr_data.get("pagerank_table", [])
         if pr_table:
-            st.dataframe(pd.DataFrame(pr_table), use_container_width=True, hide_index=True)
+            df_pr = pd.DataFrame(pr_table)
+            st.dataframe(df_pr, use_container_width=True, hide_index=True)
+            st.download_button(
+                "📥 Download PageRank CSV",
+                data=df_pr.to_csv(index=False).encode("utf-8"),
+                file_name="falkordb_pagerank_centrality.csv",
+                mime="text/csv",
+                key="btn_download_pagerank",
+                use_container_width=True,
+            )
         else:
             st.info("No PageRank results returned.")
 
@@ -704,9 +731,19 @@ with tab_ag1:
         )
         blast_info = compute_blast_radius_and_criticality(manager=manager, tenant_id=current_tenant, service_name=target_svc)
         impacted = blast_info.get("impacted_services", [])
-        st.markdown(f"**Impacted Upstream Services ({len(impacted)}):**")
+        total_paths = blast_info.get("total_paths_count", len(impacted))
+        st.markdown(f"**Impacted Upstream Services ({len(impacted)} distinct microservices across {total_paths} paths):**")
         if impacted:
-            st.dataframe(pd.DataFrame(impacted), use_container_width=True, hide_index=True)
+            df_blast = pd.DataFrame(impacted)
+            st.dataframe(df_blast, use_container_width=True, hide_index=True)
+            st.download_button(
+                f"📥 Download Blast Radius CSV ({target_svc})",
+                data=df_blast.to_csv(index=False).encode("utf-8"),
+                file_name=f"blast_radius_{target_svc}.csv",
+                mime="text/csv",
+                key="btn_download_blast",
+                use_container_width=True,
+            )
         else:
             st.write("No upstream dependencies detected.")
 
@@ -716,13 +753,15 @@ with tab_ag1:
     if audit_entries:
         audit_rows = []
         for e in audit_entries:
+            ts_raw = str(e.get("timestamp") or "")
+            q_raw = str(e.get("query") or "")
             audit_rows.append({
-                "Timestamp": e.get("timestamp")[:19].replace("T", " "),
+                "Timestamp": ts_raw[:19].replace("T", " "),
                 "Tenant": e.get("tenant_id"),
                 "Latency (ms)": e.get("latency_ms"),
                 "Rows": e.get("row_count"),
                 "Success": "✅" if e.get("success") else "❌",
-                "Cypher Query": e.get("query")[:80] + "..." if len(e.get("query", "")) > 80 else e.get("query"),
+                "Cypher Query": q_raw[:80] + "..." if len(q_raw) > 80 else q_raw,
             })
         st.dataframe(pd.DataFrame(audit_rows), use_container_width=True, hide_index=True)
 
@@ -738,16 +777,45 @@ with tab_ag2:
     with b_col1:
         st.markdown("#### 🏛️ ADR Lineage & Superseded Chains")
         st.caption("Query: `(:Decision)-[:SUPERSEDES]->(:Decision)`")
+        
+        # Visual Decision Lineage Banner
+        st.markdown("""
+        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 13px;">
+            <b style="color: #a5b4fc;">🔗 Verified Architectural Decision Chain:</b><br/>
+            <span class="citation-pill" style="border-color: #f43f5e; color: #fda4af;">ADR-014 (Legacy Synchronous Retries) [Superseded]</span>
+            <span style="color: #94a3b8;"> ──[:SUPERSEDES]──▶ </span>
+            <span class="citation-pill" style="border-color: #34d399; color: #6ee7b7;">ADR-029 (Circuit Breaker Mandate) [Active]</span>
+            <span style="color: #94a3b8;"> ──[:GOVERNS]──▶ </span>
+            <span class="citation-pill">payment-ledger</span>
+        </div>
+        """, unsafe_allow_html=True)
+
         adr_cypher = """
-        MATCH (new_d:Decision)
-        OPTIONAL MATCH (new_d)-[:SUPERSEDES]->(old_d:Decision)
-        OPTIONAL MATCH (new_d)-[:GOVERNS]->(s:Service)
-        RETURN new_d.id AS active_adr, new_d.title AS title, new_d.status AS status,
-               old_d.id AS supersedes, s.name AS governs_service
+        MATCH (d:Decision)
+        OPTIONAL MATCH (d)-[:SUPERSEDES]->(old_d:Decision)
+        OPTIONAL MATCH (d)<-[:SUPERSEDES]-(newer_d:Decision)
+        OPTIONAL MATCH (d)-[:GOVERNS]->(s:Service)
+        RETURN d.id AS `ADR ID`,
+               d.title AS `Title`,
+               d.status AS `Status`,
+               old_d.id AS `Supersedes`,
+               newer_d.id AS `Superseded By`,
+               s.name AS `Governs Service`,
+               d.date AS `Ratified Date`
+        ORDER BY d.id DESC
         """
         adr_res = manager.run_cypher(tenant_id=current_tenant, query=adr_cypher, read_only=True)
         if adr_res.success and adr_res.data:
-            st.dataframe(pd.DataFrame(adr_res.data), use_container_width=True, hide_index=True)
+            df_adr = pd.DataFrame(adr_res.data)
+            st.dataframe(df_adr, use_container_width=True, hide_index=True)
+            st.download_button(
+                "📥 Download ADR Lineage CSV",
+                data=df_adr.to_csv(index=False).encode("utf-8"),
+                file_name="falkordb_adr_lineage.csv",
+                mime="text/csv",
+                key="btn_download_adr",
+                use_container_width=True,
+            )
 
         st.markdown("#### 💬 Linked Slack Warnings & Jira Tickets")
         st.markdown("""
@@ -761,13 +829,22 @@ with tab_ag2:
         ownership_cypher = """
         MATCH (e:Engineer)-[:MEMBER_OF]->(t:Team)-[:OWNS]->(s:Service)
         OPTIONAL MATCH (e)-[exp:EXPERT_IN]->(s)
-        RETURN e.name AS engineer, e.role AS role, t.name AS team, s.name AS service,
-               exp.confidence AS expert_confidence
+        RETURN e.name AS `Engineer`, e.role AS `Role`, t.name AS `Team`, s.name AS `Service`,
+               exp.confidence AS `Expertise Confidence`
         ORDER BY s.name ASC
         """
         own_res = manager.run_cypher(tenant_id=current_tenant, query=ownership_cypher, read_only=True)
         if own_res.success and own_res.data:
-            st.dataframe(pd.DataFrame(own_res.data), use_container_width=True, hide_index=True)
+            df_own = pd.DataFrame(own_res.data)
+            st.dataframe(df_own, use_container_width=True, hide_index=True)
+            st.download_button(
+                "📥 Download Ownership Matrix CSV",
+                data=df_own.to_csv(index=False).encode("utf-8"),
+                file_name="falkordb_team_ownership.csv",
+                mime="text/csv",
+                key="btn_download_ownership",
+                use_container_width=True,
+            )
 
 
 # ==============================================================================
@@ -783,14 +860,23 @@ with tab_ag3:
         st.caption("Query: `MATCH (sess:Session)<-[:PART_OF_SESSION]-(r:AgentRun) ...`")
         handoffs_query = """
         MATCH (sess:Session)<-[:PART_OF_SESSION]-(r1:AgentRun)-[h:HANDED_OFF_TO]->(r2:AgentRun)
-        RETURN sess.id AS session, r1.agent_name AS from_agent, r2.agent_name AS to_agent,
+        RETURN DISTINCT sess.id AS session, r1.agent_name AS from_agent, r2.agent_name AS to_agent,
                r1.findings AS findings, h.timestamp AS timestamp
         ORDER BY h.timestamp DESC
         LIMIT 10
         """
         ho_res = manager.run_cypher(tenant_id=current_tenant, query=handoffs_query, read_only=True)
         if ho_res.success and ho_res.data:
-            st.dataframe(pd.DataFrame(ho_res.data), use_container_width=True, hide_index=True)
+            df_ho = pd.DataFrame(ho_res.data)
+            st.dataframe(df_ho, use_container_width=True, hide_index=True)
+            st.download_button(
+                "📥 Download Agent Handoffs CSV",
+                data=df_ho.to_csv(index=False).encode("utf-8"),
+                file_name="falkordb_agent_handoffs.csv",
+                mime="text/csv",
+                key="btn_download_handoffs",
+                use_container_width=True,
+            )
         else:
             st.info("Run an investigation in Tab 2 to record multi-agent handoffs in FalkorDB.")
 

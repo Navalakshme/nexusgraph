@@ -158,6 +158,8 @@ graph TD
 | Relationship | Source Node ➔ Target Node | Key Properties | Semantics |
 | :--- | :--- | :--- | :--- |
 | `[:AFFECTS]` | `:Incident` ➔ `:Service` | `symptom`, `error_rate` | Direct operational blast radius. |
+| `[:TRIGGERED_BY]` | `:Incident` ➔ `:Commit` | — | Direct attribution to offending change. |
+| `[:COMMANDS_INCIDENT]` | `:Engineer` ➔ `:Incident` | — | Incident commander assignment. |
 | `[:DEPENDS_ON]` | `:Service` ➔ `:Service` | `criticality`, `timeout_ms`, `protocol` | Directed dependency topology for PageRank. |
 | `[:MODIFIES]` | `:Commit` ➔ `:Service` | `diff_summary` | Service source code modification. |
 | `[:IN_PR]` | `:Commit` ➔ `:PullRequest` | — | Commit membership in PR. |
@@ -169,14 +171,21 @@ graph TD
 | `[:VIOLATES]` | `:Commit` ➔ `:Decision` | `reason` | Commit breach of active ADR policy. |
 | `[:SUPERSEDES]` | `:Decision` ➔ `:Decision` | — | Temporal decision lineage. |
 | `[:GOVERNS]` | `:Decision` ➔ `:Service` | — | Policy governance over microservice. |
+| `[:POSTED_IN]` | `:Engineer` ➔ `:SlackThread` | — | Discussion author attribution. |
+| `[:IN_CHANNEL]` | `:SlackThread` ➔ `:Team` | — | Team Slack channel binding. |
 | `[:WARNS_ABOUT]` | `:SlackThread` ➔ `:Commit` | — | Team warning regarding risky change. |
 | `[:REFERENCES]` | `:SlackThread` ➔ `:Decision` | — | Discussion context referencing ADR. |
 | `[:RESOLVES]` | `:ProceduralRunbook` ➔ `:Incident` | — | Mitigation runbook mapping. |
-| `[:APPLIES_TO]` | `:ProceduralRunbook` ➔ `:Service` | — | Runbook application target. |
+| `[:APPLIES_TO]` | `:ProceduralRunbook` / `:RemediationAction` ➔ `:Service` | — | Runbook/Action application target. |
+| `[:RECALLS_DECISION]` | `:EpisodicMemory` ➔ `:Decision` | — | Memory recall of architectural rationale. |
+| `[:INVOLVED]` | `:EpisodicMemory` ➔ `:Engineer` | — | Personnel involvement in prior incident. |
+| `[:ABOUT_SERVICE]` | `:EpisodicMemory` / `:SemanticFact` ➔ `:Service` | `rule` | Service invariant and memory binding. |
+| `[:TARGET_SERVICE]` | `:SemanticFact` ➔ `:Service` | — | Target dependency protected by invariant rule. |
 | `[:HANDED_OFF_TO]` | `:AgentRun` ➔ `:AgentRun` | `timestamp`, `reason` | Graph-native multi-agent coordination. |
 | `[:PART_OF_SESSION]` | `:AgentRun` ➔ `:Session` | — | Session containment. |
 | `[:REMEDIATED_BY]` | `:Incident` ➔ `:RemediationAction` | — | Incident mitigation attachment. |
-| `[:ABOUT_SERVICE]` | `:SemanticFact` ➔ `:Service` | — | Service invariant binding. |
+| `[:RESOLVED_INCIDENT]` | `:EpisodicMemory` ➔ `:Incident` | — | Memory linkage to resolved outage. |
+| `[:RECORDED_IN_SESSION]` | `:EpisodicMemory` ➔ `:Session` | — | Session provenance anchor. |
 
 ---
 
@@ -352,7 +361,7 @@ NexusGraph connects directly to **FalkorDB Cloud** via encrypted TCP sockets usi
 
 1. **Clone & Create Environment:**
    ```bash
-   git clone https://github.com/your-username/nexusgraph.git
+   git clone https://github.com/Navalakshme/nexusgraph.git
    cd nexusgraph
    python -m venv .venv
    .venv\Scripts\activate      # Windows

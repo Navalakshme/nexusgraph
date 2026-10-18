@@ -106,14 +106,22 @@ def compute_blast_radius_and_criticality(
     )
 
     impacted_services: List[Dict[str, Any]] = []
+    total_paths_count = 0
     if res_blast.success and res_blast.data:
+        total_paths_count = len(res_blast.data)
+        # Deduplicate by unique microservice name, preserving shortest hop path
+        unique_svcs: Dict[str, Dict[str, Any]] = {}
         for row in res_blast.data:
-            impacted_services.append({
-                "impacted_service": row.get("impacted_service"),
-                "hops": row.get("hops"),
-                "tier": row.get("tier"),
-                "path": " -> ".join(row.get("path_services", [])),
-            })
+            svc_name = row.get("impacted_service")
+            hops = row.get("hops", 1)
+            if svc_name and (svc_name not in unique_svcs or hops < unique_svcs[svc_name]["hops"]):
+                unique_svcs[svc_name] = {
+                    "impacted_service": svc_name,
+                    "hops": hops,
+                    "tier": row.get("tier"),
+                    "path": " -> ".join(row.get("path_services", [])),
+                }
+
             # Build graph paths
             path_services = row.get("path_services", [])
             path_rels = row.get("path_rels", [])
@@ -128,12 +136,16 @@ def compute_blast_radius_and_criticality(
                     "properties": props or {},
                 })
 
+        # Order by shortest hops ascending
+        impacted_services = sorted(unique_svcs.values(), key=lambda s: s["hops"])
+
     return {
         "success": True,
         "service_name": target_svc,
         "pagerank_table": pagerank_table,
         "impacted_services": impacted_services,
         "total_impacted_count": len(impacted_services),
+        "total_paths_count": total_paths_count,
         "cypher_executed": cypher_executed,
         "graph_paths": graph_paths,
     }
@@ -615,8 +627,8 @@ def record_agent_handoff(
     manager = manager or get_db_manager()
     clean_tenant = manager._sanitize_tenant_id(tenant_id)
     now = _now_iso()
-    from_run_id = f"run_{from_agent.lower()}_{uuid.uuid4().hex[:6]}"
-    to_run_id = f"run_{to_agent.lower()}_{uuid.uuid4().hex[:6]}"
+    from_run_id = f"run_{session_id}_{from_agent.lower()}"
+    to_run_id = f"run_{session_id}_{to_agent.lower()}"
     graph_paths: List[Dict[str, Any]] = []
 
     handoff_cypher = """
@@ -624,28 +636,24 @@ def record_agent_handoff(
     ON CREATE SET sess.started_at = $timestamp
     SET sess.last_active_at = $timestamp
 
-    CREATE (from_run:AgentRun {
-        id: $from_run_id,
-        agent_name: $from_agent,
-        session_id: $session_id,
-        findings: $findings,
-        cypher_used: $cypher_used,
-        timestamp: $timestamp
-    })
-    CREATE (to_run:AgentRun {
-        id: $to_run_id,
-        agent_name: $to_agent,
-        session_id: $session_id,
-        status: "pending",
-        timestamp: $timestamp
-    })
+    MERGE (from_run:AgentRun {id: $from_run_id})
+    SET from_run.agent_name = $from_agent,
+        from_run.session_id = $session_id,
+        from_run.findings = $findings,
+        from_run.cypher_used = $cypher_used,
+        from_run.timestamp = $timestamp
+
+    MERGE (to_run:AgentRun {id: $to_run_id})
+    SET to_run.agent_name = $to_agent,
+        to_run.session_id = $session_id,
+        to_run.status = "pending",
+        to_run.timestamp = $timestamp
 
     MERGE (from_run)-[:PART_OF_SESSION]->(sess)
     MERGE (to_run)-[:PART_OF_SESSION]->(sess)
-    MERGE (from_run)-[:HANDED_OFF_TO {
-        timestamp: $timestamp,
-        reason: "Autonomous investigation handoff"
-    }]->(to_run)
+    MERGE (from_run)-[h:HANDED_OFF_TO]->(to_run)
+    SET h.timestamp = $timestamp,
+        h.reason = "Autonomous investigation handoff"
 
     RETURN sess.id AS session_id, from_run.id AS from_id, to_run.id AS to_id
     """

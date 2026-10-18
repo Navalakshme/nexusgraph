@@ -116,6 +116,7 @@ class NexusMultiAgentOrchestrator:
         incident_id: Optional[str] = "INC-2026-1015",
         scenario_id: Optional[str] = None,
         auto_mitigate: bool = True,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Execute the complete 3-agent autonomous investigation pipeline.
 
@@ -550,6 +551,9 @@ class NexusMultiAgentOrchestrator:
                 "governing_adr": "ADR-029",
                 "superseded_adr": "ADR-014",
                 "compliance_status": "Audited",
+                "procedural_runbook": "ADR-029 Mandate",
+                "action_executed": "Audited ADR-029 lineage and Slack warning thread",
+                "incident_status": "Audited (Compliant)",
             },
             "handoff_to": None,
             "reasoning": "Synthesized Company Brain governance report mapping ADR-029 to superseded ADR-014 and correlating with Slack warning evidence.",
@@ -701,6 +705,9 @@ class NexusMultiAgentOrchestrator:
                 "episodic_memories_recalled": len(episodic_memories),
                 "semantic_facts_recalled": len(semantic_facts),
                 "procedural_runbooks_recalled": len(procedural_runbooks),
+                "procedural_runbook": procedural_runbooks[0]["id"] if procedural_runbooks else "RUNBOOK-07",
+                "action_executed": "Recalled persistent memories & verified circuit breaker rule",
+                "incident_status": "Recalled (Healthy)",
             },
             "handoff_to": None,
             "reasoning": "Queried FalkorDB memory graph and synthesized cross-session recall report detailing operational knowledge.",
