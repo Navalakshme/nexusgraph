@@ -485,6 +485,7 @@ def seed_tenant_graph(
     MERGE (mem)-[:RECALLS_DECISION]->(adr029)
     MERGE (mem)-[:INVOLVED]->(priya)
     MERGE (mem)-[:INVOLVED]->(marcus)
+    MERGE (mem)-[:ABOUT_SERVICE]->(ledger)
     MERGE (fact)-[:ABOUT_SERVICE]->(ledger)
     MERGE (fact)-[:TARGET_SERVICE]->(auth)
     """

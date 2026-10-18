@@ -495,9 +495,9 @@ def recall_agent_memories(
 
     memory_cypher = """
     MATCH (s:Service {name: $service_name})
-    OPTIONAL MATCH (ep:EpisodicMemory)-[:ABOUT_SERVICE|LINKED_TO|RESOLVED_INCIDENT*1..2]->(s)
-    OPTIONAL MATCH (rb:ProceduralRunbook)-[:APPLIES_TO]->(s)
-    OPTIONAL MATCH (sf:SemanticFact)-[:ABOUT_SERVICE|ABOUT]->(s)
+    OPTIONAL MATCH (ep:EpisodicMemory)-[:ABOUT_SERVICE|LINKED_TO|RESOLVED_INCIDENT|RECALLS_DECISION*1..2]-(s)
+    OPTIONAL MATCH (rb:ProceduralRunbook)-[:APPLIES_TO|RESOLVES*1..2]-(s)
+    OPTIONAL MATCH (sf:SemanticFact)-[:ABOUT_SERVICE|TARGET_SERVICE|ABOUT*1..2]-(s)
     RETURN collect(DISTINCT {
                id: ep.id,
                session_id: ep.session_id,
@@ -728,9 +728,9 @@ def execute_graph_action_and_persist_memory(
     manager = manager or get_db_manager()
     clean_tenant = manager._sanitize_tenant_id(tenant_id)
     now = _now_iso()
-    action_id = f"ACT-{uuid.uuid4().hex[:6].upper()}"
-    memory_id = f"MEM-{uuid.uuid4().hex[:6].upper()}"
-    fact_id = f"FACT-{uuid.uuid4().hex[:6].upper()}"
+    action_id = f"ACT-{incident_id}"
+    memory_id = f"MEM-{incident_id}"
+    fact_id = f"FACT-{service_name.upper().replace('-', '_')}"
     graph_paths: List[Dict[str, Any]] = []
 
     mutate_cypher = """
@@ -742,23 +742,20 @@ def execute_graph_action_and_persist_memory(
         inc.mitigated_at = $timestamp,
         inc.resolution_summary = $action_taken
 
-    CREATE (act:RemediationAction {
-        id: $action_id,
-        description: $action_taken,
-        timestamp: $timestamp,
-        executor: "AutonomousEngineeringAgent"
-    })
+    MERGE (act:RemediationAction {id: $action_id})
+    SET act.description = $action_taken,
+        act.timestamp = $timestamp,
+        act.executor = "AutonomousEngineeringAgent (Simulated DevOps Control Plane)",
+        act.mode = "Simulated"
     MERGE (inc)-[:REMEDIATED_BY]->(act)
     MERGE (act)-[:APPLIED_TO]->(svc)
 
-    CREATE (mem:EpisodicMemory {
-        id: $memory_id,
-        session_id: $session_id,
-        summary: $action_summary,
-        confidence: 0.99,
-        timestamp: $timestamp,
-        key_learnings: $learned_fact
-    })
+    MERGE (mem:EpisodicMemory {id: $memory_id})
+    SET mem.session_id = $session_id,
+        mem.summary = $action_summary,
+        mem.confidence = 0.99,
+        mem.timestamp = $timestamp,
+        mem.key_learnings = $learned_fact
     MERGE (mem)-[:RESOLVED_INCIDENT]->(inc)
     MERGE (mem)-[:ABOUT_SERVICE]->(svc)
     MERGE (mem)-[:RECORDED_IN_SESSION]->(sess)
@@ -767,6 +764,7 @@ def execute_graph_action_and_persist_memory(
     SET fact.subject = $service_name,
         fact.predicate = "mitigation_rule",
         fact.object = $learned_fact,
+        fact.rule = $learned_fact,
         fact.source = "IncidentResolution:" + $incident_id,
         fact.verified = true,
         fact.updated_at = $timestamp

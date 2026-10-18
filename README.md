@@ -404,6 +404,29 @@ Add a `Dockerfile`-free Python Web Service:
 
 ---
 
+## ⚡ Autonomous Control Plane: Safe Simulation Boundary
+
+NexusGraph operates against a **Simulated DevOps Control Plane (Dry-Run Safe)** for hackathon benchmarking:
+- **Graph State Mutation:** When **Auto-Execute** is enabled, Agent 3 executes remediation by creating `(:RemediationAction)` audit records, mutating incident lifecycle status to `Mitigated`, and establishing `[:REMEDIATED_BY]` edges in FalkorDB Cloud.
+- **Dry-Run Safety:** Downstream cloud actions (Kubernetes rollout restarts, Git revert branches, and ConfigMap patches) are safely executed as simulated dry-run operations. This ensures zero unintended side effects or destructive modifications on shared evaluator cloud infrastructure.
+- **Enterprise Extensibility:** In an enterprise deployment, this control plane connects directly to ArgoCD / Kubernetes Webhooks / GitHub API via RBAC-restricted service tokens.
+- **Manual Mode Guardrail:** When **Auto-Execute** is disabled, the system operates in **Manual Review Mode**. Agent 3 formulates the recovery runbook for human Incident Commander sign-off without mutating graph state or incident status.
+
+---
+
+## 🏛️ Infrastructure Architecture: Hackathon Evaluation vs. Enterprise Production
+
+| Architectural Dimension | Hackathon Live Benchmark (Current) | Enterprise Production Blueprint |
+| :--- | :--- | :--- |
+| **Database Deployment** | FalkorDB Cloud Free Tier (`ap-south-1` AWS Mumbai) | Multi-AZ High-Availability (HA) FalkorDB Cluster with automatic failover |
+| **Network Security** | Public cloud gateway with TLS & encrypted auth | AWS / GCP VPC Peering, PrivateLink & IP whitelisting |
+| **Backup & Disaster Recovery** | Cloud instance snapshots & on-demand seeding | Automated hourly RDB backups to S3 / GCS with 30-day point-in-time recovery |
+| **Multi-Tenancy Isolation** | Tenant prefix graph keys (`nexus_{tenant_id}`) | Dedicated Graph Namespaces + IAM Role Mapping |
+| **Query Safeguards** | AST keyword filtering & `ro_query` API | FalkorDB User Roles, ACLs & dedicated Read-Only Replica Endpoints |
+| **DevOps Actions** | Simulated dry-run control plane in graph | ArgoCD / GitHub Actions API via Vault credentials |
+
+---
+
 ## 🤖 Model Context Protocol (FastMCP) Integration
 
 NexusGraph exposes its FalkorDB graph reasoning tools via the official **FastMCP** server standard (`mcp.server.fastmcp`). Any external LLM agent (Claude Desktop, Cursor, Antigravity, or custom agents) can connect directly to FalkorDB via MCP:

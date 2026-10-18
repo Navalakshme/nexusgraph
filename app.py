@@ -497,25 +497,71 @@ with tab_pipe:
     st.subheader("Autonomous Multi-Agent Collaborative Pipeline")
     st.markdown("Run the 3 specialized agents in sequence: **TriageAgent** ➔ **LineageAgent** ➔ **ActionAgent** passing state via FalkorDB.")
 
+    SCENARIO_CONFIGS = {
+        "scenario_a": {
+            "name": "🚨 Scenario A: Investigate SEV-1 504 Outage (INC-2026-1015)",
+            "prompt": "Investigate SEV-1 Incident INC-2026-1015, verify if any architectural decision was violated, check past memory, and execute mitigation.",
+            "desc": "Full 5-hop incident root cause trace, ADR violation check, and automated graph mitigation.",
+            "incident_id": "INC-2026-1015",
+        },
+        "scenario_b": {
+            "name": "📜 Scenario B: Audit ADR Lineage for payment-ledger",
+            "prompt": "Audit architectural decision lineage and Slack warnings for payment-ledger to see which ADR was superseded.",
+            "desc": "Company Brain audit: inspects ADR-029 superseding ADR-014 and Priya Nair's warning in SLACK-991.",
+            "incident_id": None,
+        },
+        "scenario_c": {
+            "name": "🧠 Scenario C: Recall Memory for auth-token-service",
+            "prompt": "Recall cross-session episodic memories, procedural runbooks, and blast radius for auth-token-service.",
+            "desc": "Memory recall: queries episodic memories, semantic facts, and PageRank centrality for auth-token-service.",
+            "incident_id": None,
+        },
+    }
+
+    if "selected_scenario_id" not in st.session_state:
+        st.session_state["selected_scenario_id"] = "scenario_a"
+    if "investigation_input" not in st.session_state:
+        st.session_state["investigation_input"] = SCENARIO_CONFIGS["scenario_a"]["prompt"]
+
+    st.markdown("**Select Benchmark Scenario:**")
     pcol1, pcol2, pcol3 = st.columns(3)
-    preset_query = None
-    if pcol1.button("🚨 Scenario A: Investigate SEV-1 504 Outage (INC-2026-1015)", use_container_width=True):
-        preset_query = "Investigate SEV-1 Incident INC-2026-1015, verify if any architectural decision was violated, check past memory, and execute mitigation."
-    if pcol2.button("📜 Scenario B: Audit ADR Lineage for payment-ledger", use_container_width=True):
-        preset_query = "Audit architectural decision lineage and Slack warnings for payment-ledger to see which ADR was superseded."
-    if pcol3.button("🧠 Scenario C: Recall Memory for auth-token-service", use_container_width=True):
-        preset_query = "Recall cross-session episodic memories, procedural runbooks, and blast radius for auth-token-service."
+    curr_sc = st.session_state["selected_scenario_id"]
+
+    with pcol1:
+        if st.button("🚨 Scenario A: SEV-1 Outage", use_container_width=True, type="primary" if curr_sc == "scenario_a" else "secondary"):
+            st.session_state["selected_scenario_id"] = "scenario_a"
+            st.session_state["investigation_input"] = SCENARIO_CONFIGS["scenario_a"]["prompt"]
+            st.rerun()
+    with pcol2:
+        if st.button("📜 Scenario B: ADR Lineage Audit", use_container_width=True, type="primary" if curr_sc == "scenario_b" else "secondary"):
+            st.session_state["selected_scenario_id"] = "scenario_b"
+            st.session_state["investigation_input"] = SCENARIO_CONFIGS["scenario_b"]["prompt"]
+            st.rerun()
+    with pcol3:
+        if st.button("🧠 Scenario C: Memory Recall", use_container_width=True, type="primary" if curr_sc == "scenario_c" else "secondary"):
+            st.session_state["selected_scenario_id"] = "scenario_c"
+            st.session_state["investigation_input"] = SCENARIO_CONFIGS["scenario_c"]["prompt"]
+            st.rerun()
+
+    active_sc_info = SCENARIO_CONFIGS[st.session_state["selected_scenario_id"]]
+    st.caption(f"Active Scenario: **{active_sc_info['name']}** — *{active_sc_info['desc']}*")
 
     user_input = st.text_input(
         "Investigation Query / Instruction:",
-        value=preset_query or "Investigate SEV-1 Incident INC-2026-1015, verify if any architectural decision was violated, check past memory, and execute mitigation.",
+        value=st.session_state["investigation_input"],
+        key="investigation_input_widget",
     )
+    st.session_state["investigation_input"] = user_input
 
     tcol1, tcol2 = st.columns([3, 1])
     with tcol1:
-        auto_mitigate = st.checkbox("Auto-Execute Graph Remediation & Persist Episodic Memory in FalkorDB", value=True)
+        auto_mitigate = st.checkbox(
+            "Auto-Execute Graph Remediation & Persist Memory (Simulated DevOps Control Plane — Dry-Run Safe)",
+            value=True,
+            help="When enabled, Agent 3 creates RemediationAction and EpisodicMemory nodes in FalkorDB without mutating live production cloud clusters."
+        )
     with tcol2:
-        run_btn = st.button("▶ Run Multi-Agent Investigation", type="primary", use_container_width=True, disabled=not is_connected)
+        run_btn = st.button("▶ Run Multi-Agent Pipeline", type="primary", use_container_width=True, disabled=not is_connected)
 
     if run_btn:
         orchestrator = NexusMultiAgentOrchestrator(
@@ -523,23 +569,38 @@ with tab_pipe:
             gemini_api_key=os.getenv("GEMINI_API_KEY"),
         )
         
-        with st.status("🚀 Running 3-Agent Collaborative Investigation...", expanded=True) as status:
-            st.write("🔍 **Agent 1 (Triage & Topology)**: Running 5-hop incident traversal & PageRank blast radius in FalkorDB...")
-            time.sleep(0.3)
-            st.write("🏛️ **Agent 2 (Company Brain)**: Reading handoff from graph; inspecting ADR superseded lineage & Slack warnings...")
-            time.sleep(0.3)
-            st.write("🧠 **Agent 3 (Memory & Action)**: Recalling past runbooks, executing mitigation, and persisting EpisodicMemory...")
+        status_label = f"🚀 Running 3-Agent Collaborative Pipeline ({active_sc_info['name'].split(':')[0]})..."
+        with st.status(status_label, expanded=True) as status:
+            if st.session_state["selected_scenario_id"] == "scenario_b":
+                st.write("🔍 **Agent 1 (Topology)**: Auditing service topology and blast radius...")
+                time.sleep(0.3)
+                st.write("🏛️ **Agent 2 (Company Brain)**: Reading handoff; auditing ADR-029 superseded lineage & Slack warnings...")
+                time.sleep(0.3)
+                st.write("🧠 **Agent 3 (Governance Synthesizer)**: Formulating architectural governance audit report...")
+            elif st.session_state["selected_scenario_id"] == "scenario_c":
+                st.write("🔍 **Agent 1 (Centrality)**: Evaluating PageRank criticality for auth-token-service...")
+                time.sleep(0.3)
+                st.write("🏛️ **Agent 2 (Lineage)**: Inspecting protective architectural constraints in Company Brain...")
+                time.sleep(0.3)
+                st.write("🧠 **Agent 3 (Memory Synthesizer)**: Recalling cross-session episodic memories & semantic facts...")
+            else:
+                st.write("🔍 **Agent 1 (Triage & Topology)**: Running 5-hop incident traversal & PageRank blast radius in FalkorDB...")
+                time.sleep(0.3)
+                st.write("🏛️ **Agent 2 (Company Brain)**: Reading handoff from graph; inspecting ADR superseded lineage & Slack warnings...")
+                time.sleep(0.3)
+                st.write("🧠 **Agent 3 (Memory & Action)**: Recalling past runbooks, coordinating mitigation, and updating memory...")
             
             result = orchestrator.run_investigation(
                 tenant_id=current_tenant,
                 session_id=st.session_state["active_session_id"],
                 user_prompt=user_input,
-                incident_id="INC-2026-1015",
+                scenario_id=st.session_state["selected_scenario_id"],
+                incident_id=active_sc_info["incident_id"],
                 auto_mitigate=auto_mitigate,
             )
             st.cache_data.clear()
             st.session_state["last_investigation_result"] = result
-            status.update(label="✅ Autonomous Multi-Agent Investigation Complete!", state="complete", expanded=False)
+            status.update(label=f"✅ {active_sc_info['name'].split(':')[0]} Pipeline Complete!", state="complete", expanded=False)
 
     # Render results
     inv_res = st.session_state["last_investigation_result"]
@@ -739,11 +800,19 @@ with tab_ag3:
         if st.button("⚡ Simulate Next-Day Session #2 Audit"):
             mem_recall = recall_agent_memories(manager=manager, tenant_id=current_tenant, service_name="payment-ledger")
             st.success("Session #2 successfully queried FalkorDB memory for 'payment-ledger'!")
+            active_rule = None
+            for sf in mem_recall.get("semantic_facts", []):
+                if sf.get("rule"):
+                    active_rule = sf.get("rule")
+                    break
+                elif sf.get("object") and "circuit breaker" in str(sf.get("object", "")).lower():
+                    active_rule = sf.get("object")
+                    break
             st.json({
                 "episodic_memories_recalled": len(mem_recall.get("episodic_memories", [])),
                 "procedural_runbooks_recalled": len(mem_recall.get("procedural_runbooks", [])),
                 "semantic_facts_recalled": len(mem_recall.get("semantic_facts", [])),
-                "active_mitigation_rule": mem_recall.get("semantic_facts", [{}])[0].get("rule") if mem_recall.get("semantic_facts") else None,
+                "active_mitigation_rule": active_rule,
             })
 
     st.markdown("---")
